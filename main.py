@@ -1,18 +1,33 @@
 from urllib.request import urlopen
+import urllib.request
 import os
+import sys
 from bs4 import BeautifulSoup
 from urllib.error import HTTPError
 import psycopg2
 from curses.ascii import NUL
 from apt.auth import update
 
+
 """
 DEFINE UMA VARIÁVEL INICIAL PARA A URL
 """
 START_URL = ("http://www.allitebooks.com/")
+sql = "dbname='livros' user='postgres' host='localhost' password='123'"
 
 downloads = []
 downloadsError = []
+
+
+def downloader(a,b,c):
+        # Abaixo, a variável "n" recebe um número que representa a porcentagem do progresso do download.
+        n = int(min(72, float(a * b) / c * 72))
+        # Abaixo, a barra de progresso e a porcentagem referente ao download são mostradas.
+        sys.stdout.write("\r"+"["+("=" * n)+"]".rjust(73 -n)+" "+str(int(min(100, float(a * b) / c * 100)))+"%")
+        # O método flush() é usado para liberar a saida.
+        sys.stdout.flush()
+
+
 
 def quant_pags():
     try:
@@ -30,6 +45,7 @@ def quant_pags():
 
 def get_links(url):
     html = urlopen(url)
+    print(url)
     try:
         bsObj = BeautifulSoup(html.read(), "html.parser")
     except:
@@ -78,6 +94,8 @@ def download_link(url,name):
         except:
             print("Erro ao baixar o livro: "+name +". Verifique o link do mesmo ")
         return None
+
+
     try:
         download  = urlopen(links)
     except HTTPError as e:
@@ -87,28 +105,30 @@ def download_link(url,name):
 
         return None
 
-    file_path = os.path.join('/home/bruno/Livros/'+ name+'.pdf')
+    file_path = os.path.join('/home/brunosette/Livros/'+ name+'.pdf')
     print("Salvando em: "+file_path)
     if baixado(name,isbn,"true"):
-        file = open(file_path, 'wb')
-        file.write(download.read())
-        file.close()
+        #file = open(file_path, 'wb')
+        urllib.request.urlretrieve(links, file_path, reporthook=downloader)
+        #file.write(download.read())
+        #file.close()
         ''''gerar_arquivo(links,name)'''
         print("Livro baixado com sucesso")
     else:
         if (verificalivro(isbn)):
-            update(isbn, "true")
+            download()
             file = open(file_path, 'wb')
             file.write(download.read())
             file.close()
         else:
+            update(isbn, "true")
             print("Livro ja baixado: " +name + ",verifique seus arquivos e seu banco de dados")
 
 
 def verificalivro(isbn):
     try:
         ''''CRIAR DATABASE livros no postgres e definir senha como 123'''
-        conn = psycopg2.connect("dbname='livros' user='postgres' host='localhost' password='123'")
+        conn = psycopg2.connect(sql)
     except:
         print ("I am unable to connect to the database")
         return 0
@@ -133,17 +153,17 @@ def verificalivro(isbn):
 
 def baixado(name,isbn,baixado):
     try:
-        conn = psycopg2.connect("dbname='livros' user='postgres' host='localhost' password='123'")
+        conn = psycopg2.connect(sql)
     except:
-        return 0
         print ("I am unable to connect to the database")
+        return 0
+        
     cur = conn.cursor()
-    ''''criar tabela livros com campos isbn varchar(100),nome varchar(100),baixado boolean'''
-    sql = "INSERT INTO livros (isbn,nome,baixado) VALUES ('"+isbn+"','"+name+"',"+baixado+")"
-    print(sql)
+    ''''criar tabela livros com campos isbn varchar(100) primary key ,nome varchar(100),baixado boolean'''
+    sqlI = "INSERT INTO livros (isbn,nome,baixado) VALUES ('"+isbn+"','"+name+"',"+baixado+")"
+    print(sqlI)
     try:
-        cur.execute(sql)
-        conn.commit()
+        
         if conn:
             conn.close()
         return 1
@@ -155,7 +175,7 @@ def baixado(name,isbn,baixado):
 
 def update(isbn,baixado):
     try:
-        conn = psycopg2.connect("dbname='livros' user='postgres' host='localhost' password='123'")
+        conn = psycopg2.connect(sql)
     except:
         return 0
         print ("I am unable to connect to the database")
@@ -192,23 +212,28 @@ def gerar_arquivo_erro(url,name):
 
     fp.close()
 
-"""
-    MÉTODO PRINCIPAL
-"""
-try:
-    conn = psycopg2.connect("dbname='livros' user='postgres' host='localhost' password='123'")
-except:
-    print ("I am unable to connect to the database")
+def main():
+    """
+        MÉTODO PRINCIPAL
+    """
+    try:
+        conn = psycopg2.connect(sql)
+    except:
 
-quantPages = quant_pags()
-NEW_URL = START_URL + "page/"
-try:
-    os.mkdir("/home/bruno/Livros")
-    print("Pasta já criada com sucesso\n")
-except FileExistsError:
-    print("Pasta já criada\n")
+        print ("I am unable to connect to the database")
+
+    quantPages = quant_pags()
+    NEW_URL = START_URL + "page/"
+    try:
+        os.mkdir("/home/brunosette/Livros")
+        print("Pasta criada com sucesso\n")
+    except FileExistsError:
+        print("Pasta já criada\n")
 
 
-for i in range(1,quantPages+1):
-    url = NEW_URL + str(i)
-    get_links(url)
+    for i in range(1,quantPages+1):
+        url = NEW_URL + str(i)
+        get_links(url)
+
+if __name__=="__main__":
+    main()
